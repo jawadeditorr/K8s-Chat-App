@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>K8s Chat — Real-Time Messaging</title>
+  <meta name="description" content="A real-time chat application built with WebSockets. Connect, chat, and communicate instantly with multiple users." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- Username Modal -->
+  <div class="modal-overlay" id="usernameModal">
+    <div class="modal">
+      <div class="modal-icon">💬</div>
+      <h1 class="modal-title">K8s Chat</h1>
+      <p class="modal-subtitle">Enter your name to start chatting</p>
+      <form id="usernameForm">
+        <input
+          type="text"
+          id="usernameInput"
+          class="modal-input"
+          placeholder="Your display name..."
+          maxlength="20"
+          autocomplete="off"
+          autofocus
+        />
+        <button type="submit" class="modal-btn" id="joinBtn">
+          <span>Join Chat</span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+            <polyline points="12 5 19 12 12 19"></polyline>
+          </svg>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Main Chat Interface -->
+  <div class="app-container" id="appContainer" style="display: none;">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <span class="brand-icon">💬</span>
+          <span class="brand-text">K8s Chat</span>
+        </div>
+        <button class="sidebar-toggle" id="sidebarClose" aria-label="Close sidebar">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="online-section">
+        <div class="online-header">
+          <span class="online-dot"></span>
+          <span>Online</span>
+          <span class="online-count" id="onlineCount">0</span>
+        </div>
+        <ul class="user-list" id="userList"></ul>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="connection-status" id="connectionStatus">
+          <span class="status-dot connected"></span>
+          <span>Connected</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Chat Area -->
+    <main class="chat-area">
+      <header class="chat-header">
+        <button class="menu-btn" id="menuBtn" aria-label="Toggle sidebar">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+        <div class="chat-header-info">
+          <h1 class="chat-title">General Chat</h1>
+          <span class="chat-subtitle" id="typingIndicator">Everyone can see messages here</span>
+        </div>
+      </header>
+
+      <div class="messages-container" id="messagesContainer">
+        <div class="messages-list" id="messagesList">
+          <!-- Messages will appear here -->
+        </div>
+      </div>
+
+      <div class="chat-input-area">
+        <form class="message-form" id="messageForm">
+          <div class="input-wrapper">
+            <input
+              type="text"
+              id="messageInput"
+              class="message-input"
+              placeholder="Type a message..."
+              maxlength="1000"
+              autocomplete="off"
+            />
+            <button type="submit" class="send-btn" id="sendBtn" aria-label="Send message">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </div>
+        </form>
+      </div>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
