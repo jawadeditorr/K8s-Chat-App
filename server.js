@@ -2,13 +2,77 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
+const { createClient } = require('redis');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
+// ===== Redis Configuration =====
+const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
+const REDIS_PORT = process.env.REDIS_PORT || 6379;
+const MESSAGE_HISTORY_LIMIT = 100;
+const REDIS_KEY = 'chat:messages';
+
+const redisClient = createClient({
+  url: `redis://${REDIS_HOST}:${REDIS_PORT}`
+});
+
+redisClient.on('error', (err) => {
+  console.error('❌ Redis connection error:', err.message);
+});
+
+redisClient.on('connect', () => {
+  console.log(`📦 Connected to Redis at ${REDIS_HOST}:${REDIS_PORT}`);
+});
+
+// Connect to Redis
+(async () => {
+  try {
+    await redisClient.connect();
+  } catch (err) {
+    console.error('❌ Failed to connect to Redis:', err.message);
+    console.log('⚠️  Server will continue without message persistence');
+  }
+})();
+
+// ===== Helper: Save message to Redis =====
+async function saveMessage(message) {
+  try {
+    if (redisClient.isReady) {
+      await redisClient.rPush(REDIS_KEY, JSON.stringify(message));
+      // Trim to keep only the last N messages
+      await redisClient.lTrim(REDIS_KEY, -MESSAGE_HISTORY_LIMIT, -1);
+    }
+  } catch (err) {
+    console.error('Error saving message to Redis:', err.message);
+  }
+}
+
+// ===== Helper: Get message history from Redis =====
+async function getMessageHistory() {
+  try {
+    if (redisClient.isReady) {
+      const messages = await redisClient.lRange(REDIS_KEY, 0, -1);
+      return messages.map(msg => JSON.parse(msg));
+    }
+  } catch (err) {
+    console.error('Error fetching message history from Redis:', err.message);
+  }
+  return [];
+}
+
 // Serve static files from public directory
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Health check endpoint for Kubernetes probes
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    redis: redisClient.isReady ? 'connected' : 'disconnected',
+    uptime: process.uptime()
+  });
+});
 
 // Store connected users
 const users = new Map();
@@ -57,7 +121,7 @@ function broadcastUserList() {
   broadcast(data);
 }
 
-wss.on('connection', (ws) => {
+wss.on('connection', async (ws) => {
   userCounter++;
   const userId = `user_${userCounter}_${Date.now()}`;
   const userColor = generateColor();
@@ -70,13 +134,24 @@ wss.on('connection', (ws) => {
     joinedAt: new Date()
   });
 
-  // Send welcome message with user info
+  // Fetch message history from Redis
+  const history = await getMessageHistory();
+
+  // Send welcome message with user info and chat history
   ws.send(JSON.stringify({
     type: 'welcome',
     userId: userId,
     color: userColor,
     onlineUsers: getOnlineUsers()
   }));
+
+  // Send chat history to the new user
+  if (history.length > 0) {
+    ws.send(JSON.stringify({
+      type: 'chatHistory',
+      messages: history
+    }));
+  }
 
   // Notify others that a new user connected
   broadcast({
@@ -87,7 +162,7 @@ wss.on('connection', (ws) => {
 
   broadcastUserList();
 
-  ws.on('message', (rawMessage) => {
+  ws.on('message', async (rawMessage) => {
     try {
       const data = JSON.parse(rawMessage.toString());
 
@@ -98,11 +173,13 @@ wss.on('connection', (ws) => {
           const newName = users.get(ws).username;
 
           // Notify everyone about the name change
-          broadcast({
+          const systemMsg = {
             type: 'system',
             message: `${oldName === 'Guest' ? 'A user' : oldName} is now known as ${newName}`,
             timestamp: new Date().toISOString()
-          });
+          };
+          broadcast(systemMsg);
+          await saveMessage(systemMsg);
 
           broadcastUserList();
           break;
@@ -120,6 +197,9 @@ wss.on('connection', (ws) => {
             message: data.message.trim().slice(0, 1000),
             timestamp: new Date().toISOString()
           };
+
+          // Save to Redis before broadcasting
+          await saveMessage(chatMessage);
 
           // Send to all clients including sender
           broadcast(chatMessage);
@@ -150,14 +230,16 @@ wss.on('connection', (ws) => {
     }
   });
 
-  ws.on('close', () => {
+  ws.on('close', async () => {
     const user = users.get(ws);
     if (user) {
-      broadcast({
+      const leaveMsg = {
         type: 'system',
         message: `${user.username} has left the chat`,
         timestamp: new Date().toISOString()
-      });
+      };
+      broadcast(leaveMsg);
+      await saveMessage(leaveMsg);
       users.delete(ws);
       broadcastUserList();
     }
@@ -170,9 +252,30 @@ wss.on('connection', (ws) => {
   });
 });
 
+// Graceful shutdown
+async function shutdown() {
+  console.log('\n🛑 Shutting down gracefully...');
+  try {
+    if (redisClient.isReady) {
+      await redisClient.quit();
+      console.log('📦 Redis connection closed');
+    }
+  } catch (err) {
+    console.error('Error closing Redis:', err.message);
+  }
+  server.close(() => {
+    console.log('📡 HTTP server closed');
+    process.exit(0);
+  });
+}
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`\n🚀 K8s Chat App is running!`);
   console.log(`📡 Server: http://localhost:${PORT}`);
-  console.log(`🔌 WebSocket server ready\n`);
+  console.log(`🔌 WebSocket server ready`);
+  console.log(`📦 Redis: ${REDIS_HOST}:${REDIS_PORT}\n`);
 });

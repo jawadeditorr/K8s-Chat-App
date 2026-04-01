@@ -163,6 +163,19 @@ class ChatApp {
         this.addChatMessage(data);
         break;
 
+      case 'chatHistory':
+        // Render persisted messages from Redis
+        if (data.messages && data.messages.length > 0) {
+          data.messages.forEach(msg => {
+            if (msg.type === 'chat') {
+              this.addChatMessage(msg);
+            } else if (msg.type === 'system') {
+              this.addSystemMessage(msg.message, msg.timestamp);
+            }
+          });
+        }
+        break;
+
       case 'system':
         this.addSystemMessage(data.message, data.timestamp);
         break;
